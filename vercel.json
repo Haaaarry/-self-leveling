@@ -46,9 +46,6 @@
       ]
     }
   ],
-  "env": {
-    "NEXT_PUBLIC_APP_URL": "@app-url"
-  },
   "regions": ["iad1"],
   "rewrites": [
     {
