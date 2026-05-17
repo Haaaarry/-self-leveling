@@ -2,7 +2,8 @@ import OpenAI from 'openai';
 import { AIPlanningResponse } from '@/types';
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.DEEPSEEK_API_KEY,
+  baseURL: 'https://api.deepseek.com',
 });
 
 const SYSTEM_PROMPT = `你是一个专业的目标规划AI助手。请根据用户的目标生成详细的里程碑和每日任务计划。
