@@ -70,11 +70,12 @@ export async function POST(request: NextRequest) {
       )
     );
 
-    // Update goal total points
+    // Update goal: set total points and activate the goal
     await prisma.goal.update({
       where: { id: goal.id },
       data: {
         totalPoints: totalPoints,
+        status: 'ACTIVE',
       },
     });
 

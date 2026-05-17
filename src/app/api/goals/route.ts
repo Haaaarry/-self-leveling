@@ -5,7 +5,7 @@ import prisma from '@/lib/prisma';
 const createGoalSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   description: z.string().optional(),
-  targetDate: z.string().optional(),
+  durationDays: z.number().int().positive('天数必须是正整数'),
 });
 
 export async function GET(request: NextRequest) {
@@ -47,12 +47,16 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validatedData = createGoalSchema.parse(body);
 
+    // 根据 durationDays 计算目标日期
+    const targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() + validatedData.durationDays);
+
     const goal = await prisma.goal.create({
       data: {
         userId: sessionId,
         title: validatedData.title,
         description: validatedData.description,
-        targetDate: validatedData.targetDate ? new Date(validatedData.targetDate) : null,
+        targetDate: targetDate,
       },
       include: {
         milestones: {

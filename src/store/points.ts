@@ -13,6 +13,7 @@ interface PointsState {
   }>;
   setPoints: (points: number, level: number) => void;
   addTransaction: (transaction: PointsState['transactions'][0]) => void;
+  setTransactions: (transactions: PointsState['transactions']) => void;
 }
 
 export const usePointsStore = create<PointsState>()(
@@ -26,6 +27,7 @@ export const usePointsStore = create<PointsState>()(
         set((state) => ({
           transactions: [transaction, ...state.transactions],
         })),
+      setTransactions: (transactions) => set({ transactions }),
     }),
     {
       name: 'points-storage',

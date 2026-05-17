@@ -11,13 +11,13 @@ import { Progress } from '@/components/ui/progress';
 import { useAuthStore } from '@/store/auth';
 import { useGoalsStore } from '@/store/goals';
 import { usePointsStore } from '@/store/points';
-import { Target, Trophy, CheckCircle, SkipForward, Plus, Zap } from 'lucide-react';
+import { Target, Trophy, CheckCircle, SkipForward, Plus, Zap, Trash2 } from 'lucide-react';
 
 export default function Home() {
   const router = useRouter();
   const { user, isAuthenticated, setUser, logout } = useAuthStore();
   const { goals, setGoals, loading: goalsLoading } = useGoalsStore();
-  const { totalPoints, level, setPoints, transactions, addTransaction } = usePointsStore();
+  const { totalPoints, level, setPoints, transactions, setTransactions } = usePointsStore();
   const [authMode, setAuthMode] = useState<'login' | 'register' | 'reset'>('login');
   const [authForm, setAuthForm] = useState({ email: '', password: '', username: '', confirmPassword: '' });
   const [resetForm, setResetForm] = useState({ email: '', code: '', newPassword: '', confirmPassword: '' });
@@ -25,8 +25,9 @@ export default function Home() {
   const [resetStep, setResetStep] = useState<'email' | 'code' | 'password'>('email');
   const [resetMessage, setResetMessage] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
-  const [goalForm, setGoalForm] = useState({ title: '', description: '' });
+  const [goalForm, setGoalForm] = useState({ title: '', description: '', durationDays: '' });
   const [generatingGoalId, setGeneratingGoalId] = useState<string | null>(null);
+  const [expandedMilestones, setExpandedMilestones] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -58,12 +59,18 @@ export default function Home() {
 
       if (goalsRes.ok) {
         const { goals } = await goalsRes.json();
-        setGoals(goals);
+        // 使用 Map 去重：按 id 去重，保留最新的数据
+        const goalsMap = new Map();
+        goals.forEach((g: typeof goals[0]) => goalsMap.set(g.id, g));
+        setGoals(Array.from(goalsMap.values()));
       }
 
       if (pointsRes.ok) {
         const { transactions } = await pointsRes.json();
-        transactions.forEach((t: typeof transactions[0]) => addTransaction(t));
+        // 使用 Map 去重并替换
+        const txMap = new Map();
+        transactions.forEach((t: typeof transactions[0]) => txMap.set(t.id, t));
+        setTransactions(Array.from(txMap.values()).slice(0, 20));
       }
     } catch (error) {
       console.error('Failed to fetch user data:', error);
@@ -111,17 +118,29 @@ export default function Home() {
 
   const handleCreateGoal = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // 验证天数输入
+    const days = parseInt(goalForm.durationDays);
+    if (isNaN(days) || days <= 0) {
+      alert('请输入完成目标所需的天数（阿拉伯数字）');
+      return;
+    }
+    
     try {
       const res = await fetch('/api/goals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(goalForm),
+        body: JSON.stringify({
+          title: goalForm.title,
+          description: goalForm.description,
+          durationDays: days,
+        }),
       });
 
       if (res.ok) {
         const { goal } = await res.json();
         setGoals([goal, ...goals]);
-        setGoalForm({ title: '', description: '' });
+        setGoalForm({ title: '', description: '', durationDays: '' });
       }
     } catch (error) {
       console.error('Create goal error:', error);
@@ -172,6 +191,35 @@ export default function Home() {
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     logout();
+  };
+
+  const handleDeleteGoal = async (goalId: string) => {
+    if (!confirm('确定要删除这个目标吗？所有关联的任务也会被删除。')) return;
+    try {
+      const res = await fetch(`/api/goals/${goalId}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setGoals(goals.filter((g) => g.id !== goalId));
+      } else {
+        const { error } = await res.json();
+        alert(error);
+      }
+    } catch (error) {
+      console.error('Delete goal error:', error);
+    }
+  };
+
+  const toggleMilestone = (milestoneId: string) => {
+    setExpandedMilestones((prev) => {
+      const next = new Set(prev);
+      if (next.has(milestoneId)) {
+        next.delete(milestoneId);
+      } else {
+        next.add(milestoneId);
+      }
+      return next;
+    });
   };
 
   const handleSendResetCode = async (e: React.FormEvent) => {
@@ -564,12 +612,30 @@ export default function Home() {
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleCreateGoal} className="mb-6">
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <Input
                       placeholder="输入你的目标..."
                       value={goalForm.title}
                       onChange={(e) => setGoalForm({ ...goalForm, title: e.target.value })}
                       required
+                      className="flex-1 min-w-[200px]"
+                    />
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        placeholder="天数"
+                        min="1"
+                        value={goalForm.durationDays}
+                        onChange={(e) => setGoalForm({ ...goalForm, durationDays: e.target.value })}
+                        className="w-24"
+                      />
+                      <span className="text-slate-400 text-sm">天</span>
+                    </div>
+                    <Input
+                      placeholder="描述（可选）..."
+                      value={goalForm.description}
+                      onChange={(e) => setGoalForm({ ...goalForm, description: e.target.value })}
+                      className="flex-1 min-w-[150px]"
                     />
                     <Button type="submit">
                       <Plus className="h-4 w-4 mr-2" />
@@ -598,20 +664,29 @@ export default function Home() {
                           className="p-4 rounded-lg bg-slate-800/50 border border-slate-700"
                         >
                           <div className="flex items-start justify-between mb-3">
-                            <div>
+                            <div className="flex-1">
                               <h3 className="font-semibold text-white">{goal.title}</h3>
                               {goal.description && (
                                 <p className="text-sm text-slate-400 mt-1">{goal.description}</p>
                               )}
                             </div>
-                            <span className={`px-2 py-1 rounded text-xs ${
-                              goal.status === 'ACTIVE' ? 'bg-green-600/20 text-green-400' :
-                              goal.status === 'PAUSED' ? 'bg-yellow-600/20 text-yellow-400' :
-                              'bg-blue-600/20 text-blue-400'
-                            }`}>
-                              {goal.status === 'ACTIVE' ? '进行中' :
-                               goal.status === 'PAUSED' ? '已暂停' : '已完成'}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-1 rounded text-xs ${
+                                goal.status === 'ACTIVE' ? 'bg-green-600/20 text-green-400' :
+                                goal.status === 'PAUSED' ? 'bg-yellow-600/20 text-yellow-400' :
+                                'bg-blue-600/20 text-blue-400'
+                              }`}>
+                                {goal.status === 'ACTIVE' ? '进行中' :
+                                 goal.status === 'PAUSED' ? '已暂停' : '已完成'}
+                              </span>
+                              <button
+                                onClick={() => handleDeleteGoal(goal.id)}
+                                className="p-1 text-slate-400 hover:text-red-400 transition-colors"
+                                title="删除目标"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
                           </div>
 
                           <div className="mb-3">
@@ -636,32 +711,49 @@ export default function Home() {
                           {/* Milestones & Tasks */}
                           {goal.milestones && goal.milestones.length > 0 && (
                             <div className="mt-4 pl-4 border-l-2 border-slate-700 space-y-3">
-                              {goal.milestones.map((milestone) => (
-                                <div key={milestone.id}>
-                                  <h4 className="text-sm font-medium text-slate-300 mb-2">
-                                    📍 {milestone.title}
-                                  </h4>
-                                  {milestone.tasks && milestone.tasks.length > 0 && (
-                                    <div className="space-y-2 ml-4">
-                                      {milestone.tasks.map((task) => (
-                                        <div
-                                          key={task.id}
-                                          className={`text-sm p-2 rounded ${
-                                            task.status === 'COMPLETED' ? 'bg-green-900/30 text-green-300' :
-                                            task.status === 'SKIPPED' ? 'bg-slate-700/50 text-slate-500 line-through' :
-                                            'bg-slate-700/50 text-slate-300'
-                                          }`}
-                                        >
-                                          {task.title}
-                                          <span className="text-yellow-400 ml-2">
-                                            {task.points}积分
-                                          </span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
+                              {goal.milestones.map((milestone) => {
+                                const isExpanded = expandedMilestones.has(milestone.id);
+                                const completedCount = milestone.tasks?.filter(t => t.status === 'COMPLETED').length || 0;
+                                const totalCount = milestone.tasks?.length || 0;
+                                
+                                return (
+                                  <div key={milestone.id}>
+                                    <button
+                                      onClick={() => toggleMilestone(milestone.id)}
+                                      className="flex items-center justify-between w-full text-left hover:bg-slate-700/30 p-2 rounded transition-colors"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-slate-400">{isExpanded ? '▼' : '▶'}</span>
+                                        <h4 className="text-sm font-medium text-slate-300">
+                                          📍 {milestone.title}
+                                        </h4>
+                                        <span className="text-xs text-slate-500">
+                                          ({completedCount}/{totalCount})
+                                        </span>
+                                      </div>
+                                    </button>
+                                    {isExpanded && milestone.tasks && milestone.tasks.length > 0 && (
+                                      <div className="space-y-2 ml-6 mt-2">
+                                        {milestone.tasks.map((task) => (
+                                          <div
+                                            key={task.id}
+                                            className={`text-sm p-2 rounded ${
+                                              task.status === 'COMPLETED' ? 'bg-green-900/30 text-green-300' :
+                                              task.status === 'SKIPPED' ? 'bg-slate-700/50 text-slate-500 line-through' :
+                                              'bg-slate-700/50 text-slate-300'
+                                            }`}
+                                          >
+                                            {task.title}
+                                            <span className="text-yellow-400 ml-2">
+                                              {task.points}积分
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           )}
                         </div>
