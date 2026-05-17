@@ -18,8 +18,12 @@ export default function Home() {
   const { user, isAuthenticated, setUser, logout } = useAuthStore();
   const { goals, setGoals, loading: goalsLoading } = useGoalsStore();
   const { totalPoints, level, setPoints, transactions, addTransaction } = usePointsStore();
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [authForm, setAuthForm] = useState({ email: '', password: '', username: '' });
+  const [authMode, setAuthMode] = useState<'login' | 'register' | 'reset'>('login');
+  const [authForm, setAuthForm] = useState({ email: '', password: '', username: '', confirmPassword: '' });
+  const [resetForm, setResetForm] = useState({ email: '', code: '', newPassword: '', confirmPassword: '' });
+  const [authError, setAuthError] = useState('');
+  const [resetStep, setResetStep] = useState<'email' | 'code' | 'password'>('email');
+  const [resetMessage, setResetMessage] = useState('');
   const [goalForm, setGoalForm] = useState({ title: '', description: '' });
   const [generatingGoalId, setGeneratingGoalId] = useState<string | null>(null);
 
@@ -59,6 +63,20 @@ export default function Home() {
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAuthError('');
+    
+    // 注册时验证确认密码
+    if (authMode === 'register') {
+      if (authForm.password !== authForm.confirmPassword) {
+        setAuthError('两次输入的密码不一致');
+        return;
+      }
+      if (authForm.password.length < 6) {
+        setAuthError('密码至少需要6个字符');
+        return;
+      }
+    }
+    
     try {
       const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
       const res = await fetch(endpoint, {
@@ -71,12 +89,14 @@ export default function Home() {
         const { user } = await res.json();
         setUser(user);
         setPoints(user.totalPoints, user.level);
+        setAuthForm({ email: '', password: '', username: '', confirmPassword: '' });
       } else {
         const { error } = await res.json();
-        alert(error);
+        setAuthError(error);
       }
     } catch (error) {
       console.error('Auth error:', error);
+      setAuthError('网络错误，请重试');
     }
   };
 
@@ -145,6 +165,81 @@ export default function Home() {
     logout();
   };
 
+  const handleSendResetCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetMessage('');
+    try {
+      const res = await fetch('/api/auth/reset-password/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resetForm.email }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setResetStep('code');
+        setResetMessage('验证码已发送到您的邮箱');
+      } else {
+        setResetMessage(data.error || '发送失败');
+      }
+    } catch (error) {
+      setResetMessage('网络错误，请重试');
+    }
+  };
+
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetMessage('');
+    try {
+      const res = await fetch('/api/auth/reset-password/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resetForm.email, code: resetForm.code }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setResetStep('password');
+        setResetMessage('验证码正确，请设置新密码');
+      } else {
+        setResetMessage(data.error || '验证码错误');
+      }
+    } catch (error) {
+      setResetMessage('网络错误，请重试');
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetMessage('');
+    if (resetForm.newPassword !== resetForm.confirmPassword) {
+      setResetMessage('两次输入的密码不一致');
+      return;
+    }
+    if (resetForm.newPassword.length < 6) {
+      setResetMessage('密码至少需要6个字符');
+      return;
+    }
+    try {
+      const res = await fetch('/api/auth/reset-password/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resetForm.email, code: resetForm.code, newPassword: resetForm.newPassword }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setResetMessage('密码重置成功！请使用新密码登录');
+        setTimeout(() => {
+          setAuthMode('login');
+          setResetForm({ email: '', code: '', newPassword: '', confirmPassword: '' });
+          setResetStep('email');
+        }, 2000);
+      } else {
+        setResetMessage(data.error || '重置失败');
+      }
+    } catch (error) {
+      setResetMessage('网络错误，请重试');
+    }
+  };
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-900 to-indigo-900">
@@ -183,7 +278,19 @@ export default function Home() {
                       required
                     />
                   </div>
+                  {authError && authMode === 'login' && (
+                    <p className="text-red-500 text-sm">{authError}</p>
+                  )}
                   <Button type="submit" className="w-full">登录</Button>
+                  <div className="text-center">
+                    <button
+                      type="button"
+                      onClick={() => setAuthMode('reset')}
+                      className="text-sm text-blue-400 hover:underline"
+                    >
+                      忘记密码？
+                    </button>
+                  </div>
                 </form>
               </TabsContent>
               <TabsContent value="register">
@@ -217,8 +324,105 @@ export default function Home() {
                       required
                     />
                   </div>
+                  <div>
+                    <Label htmlFor="reg-confirm-password">确认密码</Label>
+                    <Input
+                      id="reg-confirm-password"
+                      type="password"
+                      value={authForm.confirmPassword}
+                      onChange={(e) => setAuthForm({ ...authForm, confirmPassword: e.target.value })}
+                      required
+                    />
+                  </div>
+                  {authError && authMode === 'register' && (
+                    <p className="text-red-500 text-sm">{authError}</p>
+                  )}
                   <Button type="submit" className="w-full">注册</Button>
                 </form>
+              </TabsContent>
+              <TabsContent value="reset">
+                <div className="space-y-4 mt-4">
+                  {resetStep === 'email' && (
+                    <form onSubmit={handleSendResetCode} className="space-y-4">
+                      <div>
+                        <Label htmlFor="reset-email">邮箱</Label>
+                        <Input
+                          id="reset-email"
+                          type="email"
+                          value={resetForm.email}
+                          onChange={(e) => setResetForm({ ...resetForm, email: e.target.value })}
+                          placeholder="输入您的注册邮箱"
+                          required
+                        />
+                      </div>
+                      {resetMessage && <p className="text-blue-500 text-sm">{resetMessage}</p>}
+                      <Button type="submit" className="w-full">发送验证码</Button>
+                      <div className="text-center">
+                        <button
+                          type="button"
+                          onClick={() => setAuthMode('login')}
+                          className="text-sm text-blue-400 hover:underline"
+                        >
+                          返回登录
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                  {resetStep === 'code' && (
+                    <form onSubmit={handleVerifyCode} className="space-y-4">
+                      <p className="text-slate-400 text-sm">验证码已发送到 {resetForm.email}</p>
+                      <div>
+                        <Label htmlFor="reset-code">验证码</Label>
+                        <Input
+                          id="reset-code"
+                          type="text"
+                          value={resetForm.code}
+                          onChange={(e) => setResetForm({ ...resetForm, code: e.target.value })}
+                          placeholder="输入6位验证码"
+                          maxLength={6}
+                          required
+                        />
+                      </div>
+                      {resetMessage && <p className="text-blue-500 text-sm">{resetMessage}</p>}
+                      <Button type="submit" className="w-full">验证</Button>
+                      <div className="text-center">
+                        <button
+                          type="button"
+                          onClick={() => setResetStep('email')}
+                          className="text-sm text-blue-400 hover:underline"
+                        >
+                          重新发送验证码
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                  {resetStep === 'password' && (
+                    <form onSubmit={handleResetPassword} className="space-y-4">
+                      <div>
+                        <Label htmlFor="reset-new-password">新密码</Label>
+                        <Input
+                          id="reset-new-password"
+                          type="password"
+                          value={resetForm.newPassword}
+                          onChange={(e) => setResetForm({ ...resetForm, newPassword: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="reset-confirm-password">确认新密码</Label>
+                        <Input
+                          id="reset-confirm-password"
+                          type="password"
+                          value={resetForm.confirmPassword}
+                          onChange={(e) => setResetForm({ ...resetForm, confirmPassword: e.target.value })}
+                          required
+                        />
+                      </div>
+                      {resetMessage && <p className="text-blue-500 text-sm">{resetMessage}</p>}
+                      <Button type="submit" className="w-full">重置密码</Button>
+                    </form>
+                  )}
+                </div>
               </TabsContent>
             </Tabs>
           </CardContent>

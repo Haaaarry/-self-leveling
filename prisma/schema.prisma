@@ -28,14 +28,16 @@ enum PointTransactionType {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  passwordHash  String
-  username      String
-  totalPoints   Int       @default(0)
-  level         Int       @default(1)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String
+  username        String
+  totalPoints     Int       @default(0)
+  level           Int       @default(1)
+  resetCode       String?
+  resetCodeExpiry DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   goals               Goal[]
   pointTransactions   PointTransaction[]
