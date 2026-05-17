@@ -24,6 +24,7 @@ export default function Home() {
   const [authError, setAuthError] = useState('');
   const [resetStep, setResetStep] = useState<'email' | 'code' | 'password'>('email');
   const [resetMessage, setResetMessage] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [goalForm, setGoalForm] = useState({ title: '', description: '' });
   const [generatingGoalId, setGeneratingGoalId] = useState<string | null>(null);
 
@@ -32,6 +33,14 @@ export default function Home() {
       fetchUserData();
     }
   }, [isAuthenticated]);
+
+  // 倒计时效果
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendCooldown]);
 
   const fetchUserData = async () => {
     try {
@@ -177,7 +186,29 @@ export default function Home() {
       const data = await res.json();
       if (res.ok) {
         setResetStep('code');
-        setResetMessage('验证码已发送到您的邮箱');
+        setResetMessage('验证码已发送，请查收');
+        setResendCooldown(60); // 60秒倒计时
+      } else {
+        setResetMessage(data.error || '发送失败');
+      }
+    } catch (error) {
+      setResetMessage('网络错误，请重试');
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (resendCooldown > 0) return;
+    setResetMessage('');
+    try {
+      const res = await fetch('/api/auth/reset-password/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resetForm.email }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setResetMessage('新的验证码已发送，请查收');
+        setResendCooldown(60);
       } else {
         setResetMessage(data.error || '发送失败');
       }
@@ -388,10 +419,11 @@ export default function Home() {
                       <div className="text-center">
                         <button
                           type="button"
-                          onClick={() => setResetStep('email')}
-                          className="text-sm text-blue-400 hover:underline"
+                          onClick={handleResendCode}
+                          disabled={resendCooldown > 0}
+                          className={`text-sm ${resendCooldown > 0 ? 'text-slate-500 cursor-not-allowed' : 'text-blue-400 hover:underline'}`}
                         >
-                          重新发送验证码
+                          {resendCooldown > 0 ? `${resendCooldown}秒后可重新发送` : '重新发送验证码'}
                         </button>
                       </div>
                     </form>
