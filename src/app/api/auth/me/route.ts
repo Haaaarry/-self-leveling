@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
         username: true,
         totalPoints: true,
         level: true,
+        aiTokens: true,
       },
     });
 

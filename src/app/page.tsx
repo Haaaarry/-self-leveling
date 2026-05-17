@@ -13,7 +13,7 @@ import { useGoalsStore } from '@/store/goals';
 import { usePointsStore } from '@/store/points';
 import { ToastContainer, toast } from '@/components/toast';
 import { ConfirmDialog } from '@/components/confirm-dialog';
-import { Target, Trophy, CheckCircle, SkipForward, Plus, Zap, Trash2, Sparkles, Star, Swords, Shield } from 'lucide-react';
+import { Target, Trophy, CheckCircle, SkipForward, Plus, Zap, Trash2, Sparkles, Star, Swords, Shield, Brain } from 'lucide-react';
 
 export default function Home() {
   const router = useRouter();
@@ -31,6 +31,9 @@ export default function Home() {
   const [generatingGoalId, setGeneratingGoalId] = useState<string | null>(null);
   const [expandedMilestones, setExpandedMilestones] = useState<Set<string>>(new Set());
   
+  // AI Token 状态
+  const [aiTokens, setAiTokens] = useState<{ balance: number; transactions: any[] }>({ balance: 0, transactions: [] });
+  
   // 确认对话框状态
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -42,6 +45,7 @@ export default function Home() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchUserData();
+      fetchAiTokens();
     }
   }, [isAuthenticated]);
 
@@ -65,6 +69,7 @@ export default function Home() {
         const { user } = await userRes.json();
         setUser(user);
         setPoints(user.totalPoints, user.level);
+        setAiTokens(prev => ({ ...prev, balance: user.aiTokens || 0 }));
       }
 
       if (goalsRes.ok) {
@@ -84,6 +89,18 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Failed to fetch user data:', error);
+    }
+  };
+
+  const fetchAiTokens = async () => {
+    try {
+      const res = await fetch('/api/tokens');
+      if (res.ok) {
+        const data = await res.json();
+        setAiTokens({ balance: data.balance, transactions: data.transactions || [] });
+      }
+    } catch (error) {
+      console.error('Failed to fetch AI tokens:', error);
     }
   };
 
@@ -170,9 +187,13 @@ export default function Home() {
       });
 
       if (res.ok) {
-        const { totalPoints } = await res.json();
+        const { totalPoints, remainingTokens, tokensUsed } = await res.json();
         fetchUserData();
-        toast.achievement(`任务生成成功！共 ${totalPoints} 积分等你挑战！`);
+        fetchAiTokens();
+        toast.achievement(`任务生成成功！共 ${totalPoints} 积分等你挑战！本次消耗 ${tokensUsed} AI额度`);
+      } else if (res.status === 402) {
+        const { error, remainingTokens } = await res.json();
+        toast.error(`AI额度不足！剩余: ${remainingTokens}`);
       } else {
         const { error } = await res.json();
         toast.error(error || '任务生成失败');
@@ -614,6 +635,16 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            {/* AI Token 显示 */}
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30">
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 shadow-lg shadow-blue-500/30">
+                <Brain className="w-4 h-4 text-white" />
+              </div>
+              <div className="text-right">
+                <p className="text-blue-400 font-bold text-sm">{aiTokens.balance.toLocaleString()}</p>
+                <p className="text-xs text-slate-400">AI额度</p>
+              </div>
+            </div>
             {/* 等级显示 */}
             <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-yellow-500/20 to-amber-500/20 border border-yellow-500/30">
               <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-yellow-400 to-amber-500 shadow-lg shadow-yellow-500/30">
@@ -972,6 +1003,44 @@ export default function Home() {
                         t.type === 'EARNED' ? 'text-green-400' : 'text-red-400'
                       }`}>
                         {t.type === 'EARNED' ? '+' : '-'}{t.amount}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* AI Token 记录 */}
+            <div className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 border border-purple-500/20 rounded-2xl p-6 shadow-xl shadow-purple-500/5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center shadow-lg shadow-purple-500/30">
+                  <Brain className="w-5 h-5 text-white" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-lg font-bold text-white">AI额度</h2>
+                </div>
+                <span className="text-2xl font-bold text-blue-400">{aiTokens.balance.toLocaleString()}</span>
+              </div>
+              
+              {aiTokens.transactions.length === 0 ? (
+                <p className="text-slate-500 text-sm text-center py-4">暂无使用记录</p>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {aiTokens.transactions.slice(0, 5).map((t) => (
+                    <div
+                      key={t.id}
+                      className="flex justify-between items-center text-sm py-2 px-3 rounded-lg bg-slate-900/30"
+                    >
+                      <div>
+                        <p className="text-slate-300 text-xs">{t.description}</p>
+                        <p className="text-xs text-slate-500">
+                          {new Date(t.createdAt).toLocaleDateString('zh-CN')}
+                        </p>
+                      </div>
+                      <span className={`font-bold ${
+                        t.type === 'GRANTED' ? 'text-green-400' : 'text-purple-400'
+                      }`}>
+                        {t.type === 'GRANTED' ? '+' : '-'}{t.amount.toLocaleString()}
                       </span>
                     </div>
                   ))}

@@ -27,6 +27,11 @@ enum PointTransactionType {
   SPENT
 }
 
+enum AITokenTransactionType {
+  USED
+  GRANTED
+}
+
 model User {
   id              String    @id @default(cuid())
   email           String    @unique
@@ -34,6 +39,7 @@ model User {
   username        String
   totalPoints     Int       @default(0)
   level           Int       @default(1)
+  aiTokens        Int       @default(50000)  // AI token 余额，默认50000
   resetCode       String?
   resetCodeExpiry DateTime?
   createdAt       DateTime  @default(now())
@@ -41,6 +47,7 @@ model User {
 
   goals               Goal[]
   pointTransactions   PointTransaction[]
+  aiTokenTransactions AITokenTransaction[]
 
   @@map("users")
 }
@@ -114,4 +121,17 @@ model PointTransaction {
   task  Task?  @relation(fields: [taskId], references: [id], onDelete: SetNull)
 
   @@map("point_transactions")
+}
+
+model AITokenTransaction {
+  id          String                 @id @default(cuid())
+  userId      String
+  amount      Int
+  type        AITokenTransactionType
+  description String
+  createdAt   DateTime               @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("ai_token_transactions")
 }

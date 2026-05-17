@@ -32,6 +32,14 @@ export async function POST(request: NextRequest) {
         email: validatedData.email,
         passwordHash,
         username: validatedData.username,
+        aiTokens: 50000, // 初始 AI token 额度
+        aiTokenTransactions: {
+          create: {
+            amount: 50000,
+            type: 'GRANTED',
+            description: '新用户注册赠送',
+          },
+        },
       },
       select: {
         id: true,
@@ -39,6 +47,7 @@ export async function POST(request: NextRequest) {
         username: true,
         totalPoints: true,
         level: true,
+        aiTokens: true,
       },
     });
 
